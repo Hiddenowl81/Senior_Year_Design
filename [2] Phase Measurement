@@ -1,6 +1,6 @@
 // Phase shift measurement code: Written and Edited by Fu Ximing
 
-int i = 0,j = 0, led = 46;
+int i = 0,j = 0, led = 47;
 float time1[3] = {0,0};          // case sensitive in arduino ! ! !
 float time2[3] = {0,0};
 float freq1 = 0, freq2 = 0;
