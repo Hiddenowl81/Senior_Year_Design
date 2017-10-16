@@ -1,0 +1,77 @@
+#include <math.h>
+float ps=0;
+const float pi = 3.1415926;             //manual set pi value
+const float wl = 0.85;                  // in cm
+float distance;
+float period;
+float duration = 0;                     // clear the duration
+
+void setup() 
+{
+ pinMode(11, OUTPUT);                   // declare Digital pin 11 as 40KHz CTC square wave output
+ startTransducer();                     // start transducer function
+ 
+ Serial.begin(9600);
+ pinMode(2, INPUT);                     // set Digital pin 2 as input pin for square wave
+ pinMode(3, INPUT);                     // set Digital pin 3 as input pin for square wave
+}
+
+void loop()
+{
+   unsigned long t1, t2;
+
+   if (digitalRead(2) == HIGH)
+   {
+     t1 = micros();
+   }
+   if (digitalRead (3) == HIGH)
+   {
+     t2 = micros();
+   }
+   
+   float time_difference = t2-t1;
+   float Freq=0.5e6/float(duration);     // in micros
+   float period = 2*duration; 
+   duration += pulseIn(2, HIGH);
+   float ps = (((time_difference)*360.0)/period);
+   float distance = (ps*wl/(2*pi));
+   
+   Serial.println("\t t1 = ");
+   delay(500);
+   Serial.print(t1, 6);
+   delay(500);
+   Serial.println("\t t2 = ");
+   delay(500);
+   Serial.print(t2, 6);
+   delay(500);
+   Serial.println("\t time_difference = ");
+   delay(500);
+   Serial.print(t2-t1, 6);
+   delay(500);
+   Serial.println("\t phaseshift = ");
+   delay(500);
+   Serial.print(ps, 6);
+   delay(500);
+   Serial.println("\t distance = ");
+   delay(500);
+   Serial.print(distance, 6);
+   delay(500); 
+}
+
+void startTransducer()
+{
+//set timer2 interrupt at 8kHz
+  TCCR2A = _BV(COM2A0)| _BV(WGM21);     // set entire TCCR2A register to 0
+  TCCR2B = _BV(CS21) ;                  // same for TCCR2B
+  TCNT2  = 0;                           //initialize counter value to 0
+
+// set compare match register for 8khz increments
+  OCR2A = 24;// = (16*10^6) / (8000*8) - 1 (must be <256)
+// turn on CTC mode
+  // TCCR2A |= (1 << WGM21);
+// Set CS21 bit for 8 prescaler
+  // TCCR2B |= (1 << CS21);   
+// enable timer compare interrupt
+  // TIMSK2 |= (1 << OCIE2A);
+sei();//allow interrupts
+}
