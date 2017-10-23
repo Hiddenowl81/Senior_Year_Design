@@ -1,0 +1,137 @@
+// avr-libc library includes
+#include <avr/io.h>
+#include <avr/interrupt.h>
+volatile unsigned int overflows = 0; 
+volatile unsigned long edges = 0; 
+volatile unsigned long tstart = 0;
+volatile unsigned long tstop = 0;
+volatile unsigned long tnow = 0;
+const unsigned long cycles = 1000; 
+float period = 0;
+// A variable to stor the currently measured frequency
+float frequency = 0;
+unsigned long  time_total1 = 0;
+unsigned long  time_total2 = 0;
+unsigned long tp2 = 0; // previous time
+unsigned long tp1 = 0; // previous time
+unsigned long time_difference;
+bool isr0 = false;
+bool isr1 = false;
+
+void setup(void) {
+startTransducer();
+pinMode(11, OUTPUT); // ouput the periodic square wave at 40KHZ and feed back into 2
+pinMode(7, INPUT);
+pinMode(3, INPUT); // This is the analog comparator negative input.
+SREG = SREG | B10000000; // Enable gobal interrupts. They should 
+// already be enabled but I like to do this out of good measure.
+//attachInterrupt(0, ISR0, RISING); // pin2
+//attachInterrupt(1, ISR1, RISING); // pin3
+Serial.begin(9600); // For printing the frequency to the terminal
+}
+void startTransducer() {
+
+  //set timer2 interrupt at 8kHz
+  TCCR2A = _BV(COM2A0) | _BV(WGM21); // set entire TCCR2A register to 0
+  TCCR2B = _BV(CS21) ;// same for TCCR2B
+  TCNT2  = 0;//initialize counter value to 0
+  // set compare match register for 8khz increments
+  OCR2A = 24;// = (16*10^6) / (8000*8) - 1 (must be <256)
+  // turn on CTC mode
+  // TCCR2A |= (1 << WGM21);
+  // Set CS21 bit for 8 prescaler
+  // TCCR2B |= (1 << CS21);
+  // enable timer compare interrupt
+  // TIMSK2 |= (1 << OCIE2A);
+}
+void ISR0()
+{
+  unsigned long t = micros();
+  time_total1 = t - tp1;
+  tp1 = t; // update tp1
+  isr0 = true;
+}
+
+void ISR1()
+{
+  unsigned long t1 = micros();
+  time_total2 = t1 - tp2;
+  tp2 = t1; // update tp2
+
+  //float Freq=0.5e6/float(duration); // in micros
+  //noInterrupts();  // Keep the value from changing as we read it.
+ isr1 = true;
+}
+
+void loop(void)
+{
+ Serial.print("\t first rising edge time = ");
+ Serial.println(tp1);
+ Serial.print("\t second rising edge time = ");
+ Serial.println(tp2);
+ noInterrupts();  // Keep the value from changing as we read it.
+ unsigned long interval = tp1-tp2;
+ interrupts();
+ Serial.print("\t time_difference =  ");
+ Serial.println(interval);
+ period = measureFreq();
+ Serial.print("frequency =  ");
+ Serial.println(frequency);
+ Serial.print("period =  ");
+ Serial.println(period,3);
+ delay(3000);
+}
+
+float measureFreq(void) {
+edges = 0;
+
+ACSR = ACSR | B00000010; // enable analog comparator interrupt 
+// on failing edge (bit 1) which would actually capture a rising
+// edge of the signal and use the internal bandgap reference
+// voltage as the positive input (bit 6).
+delay(5); // A short wait for bandgap voltage to stabilize.
+
+overflows = 0;
+
+TCCR1A = B00000000; // Set Timer/Counter 1 in normal mode where 
+// it will count to 0xFFFF then repeat.
+TIMSK1 = TIMSK1 | B00000001; // Turn on Timer/Counter 1 overflow 
+// interrupt (bit 0).
+
+// Turn on the counter with no prescaler.
+TCCR1B = TCCR1B | B00000001;
+
+ACSR |=(1<<ACIE)|(1<<ACBG); // Enable analog comparator interrupt 
+// (bit 3).
+sei();
+
+while (edges < (cycles+1)) {
+// Do nothing.
+}
+
+// Calculate the frequency.
+frequency = (float)16000000*(float)cycles/(float)(tstop - tstart);
+period = 1e6/frequency;
+return period;
+}
+
+ISR(TIMER1_OVF_vect)
+{
+overflows += 1;
+}
+
+ISR(ANALOG_COMP_vect )
+{
+tnow = TCNT1; // current time
+edges += 1;
+
+if (edges == 1) { // Start counting edges.
+tstart = overflows*65536 + tnow;
+}
+else if (edges == cycles + 1) { // Stop counting edges.
+tstop = overflows*65536 + tnow;
+// Turn off Timer/Counter 1 and the comparator.
+ACSR = 0;
+TCCR1B = 0;
+}
+}
